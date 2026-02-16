@@ -322,7 +322,7 @@
           x: pos.x, y: pos.y,
           // velocities (slow, mobile-friendly)
           vx: rand(-0.012, 0.012) * ui,
-          vy: rand(-0.020, -0.040) * ui,
+          vy: -rand(0.020, 0.045) * ui,
 
           sway: rand(0, Math.PI*2),
           swaySpd: rand(0.0042, 0.0056),
@@ -696,10 +696,13 @@
           const a = lanterns[i];
 
           // boundary soft push
-          if (a.x < minX){ a.x = minX; a.vx = Math.abs(a.vx) * 0.7; }
-          if (a.x > maxX){ a.x = maxX; a.vx = -Math.abs(a.vx) * 0.7; }
-          if (a.y < minY){ a.y = minY; a.vy = Math.abs(a.vy) * 0.7; }
-          if (a.y > maxY){ a.y = maxY; a.vy = -Math.abs(a.vy) * 0.7; }
+          // boundary soft push
+if (a.x < minX){ a.x = minX; a.vx =  Math.abs(a.vx) * 0.7; }
+if (a.x > maxX){ a.x = maxX; a.vx = -Math.abs(a.vx) * 0.7; }
+
+// no top clamp (allow flying out)
+if (a.y > maxY){ a.y = maxY; a.vy = -Math.abs(a.vy) * 0.7; }
+
 
           for (let j=i+1; j<n; j++){
             const b = lanterns[j];
@@ -813,15 +816,21 @@
       // integrate motion
       for (const o of lanterns){
         o.sway += o.swaySpd * dt;
-
-        // tiny noise-like drift: keep movement alive but gentle
-        // (optional) slight pull to center prevents drifting out over time
-        const pull = 0.00001 * dt;
-        o.vx += (W*0.5 - o.x) * pull * 0.02;
-        o.vy += (H*0.55 - o.y) * pull * 0.02;
-
         o.x += o.vx * dt;
         o.y += o.vy * dt;
+        // respawn khi ra khỏi màn hình phía trên
+const buffer = 120 * getUIScale();
+if (o.y < -buffer){
+  o.y = H + rand(60, 220);
+  o.x = rand(W * 0.10, W * 0.90);
+
+  // reset sway nhẹ để nhìn tự nhiên
+  o.sway = rand(0, Math.PI * 2);
+
+  // giữ bay lên
+  o.vy = -rand(0.020, 0.045) * getUIScale();
+  o.vx = rand(-0.012, 0.012) * getUIScale();
+}
 
         // wrap is removed to avoid sudden jumps; we use bounds+repulsion instead
       }
