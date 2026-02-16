@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>CHÚC MỪNG NĂM MỚI 2026</title>
+  <title>Tết — Cây đứng yên, Đèn lồng treo Lì xì (Responsive + chống dính)</title>
   <style>
     :root{
       --bg1:#070813;
@@ -15,12 +15,13 @@
       background: radial-gradient(1200px 700px at 50% 20%, #1b1a3a 0%, #0b1020 40%, var(--bg1) 100%);
       color:#fff;
       overflow:hidden;
+      touch-action: manipulation;
     }
     canvas{ display:block; width:100vw; height:100vh; }
 
     .hud{
       position:fixed;
-      top:16px; left:16px;
+      top:12px; left:12px;
       display:flex; gap:10px; align-items:center;
       padding:10px 12px;
       background: rgba(12, 14, 26, .55);
@@ -40,6 +41,7 @@
       font-weight: 800;
       font-size: 13px;
       letter-spacing:.2px;
+      white-space: nowrap;
     }
     .hud button{
       cursor:pointer;
@@ -50,13 +52,20 @@
       border-radius: 10px;
       font-weight: 800;
       transition: transform .08s ease, background .2s ease;
+      white-space: nowrap;
     }
     .hud button:hover{ background: rgba(255,255,255,.12); }
     .hud button:active{ transform: translateY(1px); }
 
+    /* Make HUD wrap nicely on small screens */
+    @media (max-width: 520px){
+      .hud{ right:12px; flex-wrap: wrap; }
+      .hud button{ padding:8px 10px; }
+    }
+
     .footer-note{
       position:fixed;
-      bottom:14px; left:50%;
+      bottom:12px; left:50%;
       transform: translateX(-50%);
       opacity:.85;
       font-size:12px;
@@ -67,6 +76,8 @@
       backdrop-filter: blur(6px);
       user-select:none;
       z-index: 10;
+      text-align:center;
+      max-width: calc(100vw - 24px);
     }
 
     /* Popup */
@@ -79,7 +90,7 @@
       backdrop-filter: blur(4px);
     }
     .modal{
-      width:min(420px, calc(100vw - 32px));
+      width:min(420px, calc(100vw - 28px));
       border-radius: 18px;
       background: linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.06));
       border: 1px solid rgba(255,255,255,.18);
@@ -117,6 +128,7 @@
       font-size: 26px;
       text-align:center;
       text-shadow: 0 10px 30px rgba(0,0,0,.35);
+      word-break: break-word;
     }
     .hint{
       margin-top: 10px;
@@ -144,7 +156,7 @@
         <button class="close" id="closeBtn">Đóng</button>
       </div>
       <div class="gift" id="giftValue">100k</div>
-      <div class="hint">Chúc mừng năm mới - Vạn sự như ý - An khang thịnh vượng - Phúc lộc cát tường</div>
+      <div class="hint">Mỗi lần bấm <b>Regenerate</b> sẽ random lại. Mệnh giá <b>500k</b> chỉ xuất hiện <b>1</b> phong bao.</div>
     </div>
   </div>
 
@@ -155,6 +167,7 @@
     const rand = (min, max) => Math.random() * (max - min) + min;
     const randi = (min, max) => Math.floor(rand(min, max + 1));
     const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+    const hypot = Math.hypot || ((x,y)=>Math.sqrt(x*x+y*y));
 
     function weightedPick(items){
       const total = items.reduce((s, it) => s + it[1], 0);
@@ -172,31 +185,11 @@
     const canvas = document.getElementById('c');
     const ctx = canvas.getContext('2d', { alpha: true });
 
-    // Offscreen layer for static tree (huge perf win)
+    // Offscreen layer for static tree
     const treeCanvas = document.createElement('canvas');
     const treeCtx = treeCanvas.getContext('2d', { alpha: true });
 
     let W=0, H=0, DPR=1;
-
-    function resize(){
-      DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
-      W = Math.floor(innerWidth);
-      H = Math.floor(innerHeight);
-
-      canvas.width = Math.floor(W * DPR);
-      canvas.height = Math.floor(H * DPR);
-      canvas.style.width = W + "px";
-      canvas.style.height = H + "px";
-      ctx.setTransform(DPR,0,0,DPR,0,0);
-
-      treeCanvas.width = Math.floor(W * DPR);
-      treeCanvas.height = Math.floor(H * DPR);
-      treeCtx.setTransform(DPR,0,0,DPR,0,0);
-
-      // rebuild static tree layer once on resize
-      renderTreeLayer();
-    }
-    addEventListener('resize', resize);
 
     // polyfill roundRect
     if (!CanvasRenderingContext2D.prototype.roundRect) {
@@ -231,7 +224,6 @@
     const overlay = document.getElementById('overlay');
     const giftValue = document.getElementById('giftValue');
     const closeBtn = document.getElementById('closeBtn');
-
     function openPopup(value){
       giftValue.textContent = value;
       overlay.style.display = "flex";
@@ -242,7 +234,15 @@
     addEventListener('keydown', (e)=>{ if (e.key === "Escape") closePopup(); });
 
     // =========================
-    // Envelope pool (500k limited 1-2 per regenerate)
+    // Responsive scale
+    // =========================
+    function getUIScale(){
+      const s = Math.min(W, H);
+      return clamp(s / 900, 0.58, 1.00);
+    }
+
+    // =========================
+    // Envelope values (500k exactly 1)
     // =========================
     function buildEnvelopeValues(count){
       const pool = [];
@@ -253,8 +253,10 @@
         ["200k", 5],
         ["300k", 3],
       ];
-      const count500 = randi(1,2);
-      for (let i=0;i<count500;i++) pool.push("500k");
+
+      // 500k only once
+      pool.push("500k");
+
       while (pool.length < count){
         pool.push(weightedPick(base));
       }
@@ -266,63 +268,92 @@
     }
 
     // =========================
-    // Scene objects: lantern + hanging envelope
+    // Scene objects
     // =========================
     const lanterns = [];
-    const LANTERN_COUNT = 18; // fewer = smoother (still looks full)
+
+    // will be computed per populate based on screen
+    let LANTERN_COUNT = 18;
+
+    function sampleNonOverlappingPos(placed, minDist, tries = 70){
+      for (let t=0; t<tries; t++){
+        const x = rand(W*0.10, W*0.90);
+        const y = rand(H*0.14, H*0.92);
+        let ok = true;
+        for (const p of placed){
+          const dx = x - p.x, dy = y - p.y;
+          if (dx*dx + dy*dy < minDist*minDist){ ok = false; break; }
+        }
+        if (ok) return {x,y};
+      }
+      return { x: rand(W*0.10, W*0.90), y: rand(H*0.14, H*0.92) };
+    }
 
     function populate(){
       lanterns.length = 0;
+
+      const ui = getUIScale();
+      const shortSide = Math.min(W,H);
+
+      // dynamic count for mobile
+      LANTERN_COUNT = (shortSide < 520) ? 12 : (shortSide < 740 ? 15 : 18);
+
       const values = buildEnvelopeValues(LANTERN_COUNT);
 
+      // Fixed sizes but responsive
+      const r = Math.round(22 * ui);
+      const envW = Math.round(60 * ui);
+      const envH = Math.round(44 * ui);
+      const stringLen = Math.round(50 * ui);
+
+      // cluster radius for collision: cover lantern+envelope footprint
+      // bigger -> less overlap. Tune multiplier for breathing room.
+      const clusterR = Math.max((envW*0.55 + r*0.9), 36*ui);
+
+      // minimal initial spacing to avoid immediate overlap
+      const minDist = clusterR * 2.35;
+
+      const placed = [];
       for (let i=0;i<LANTERN_COUNT;i++){
-  const r = 24;            // đèn lồng đồng đều
-  const envW = 64;         // phong bao đồng đều (px)
-  const envH = 46;
-  const stringLen = 54;
+        const pos = sampleNonOverlappingPos(placed, minDist);
+        placed.push(pos);
 
-  lanterns.push({
-    x: rand(W*0.12, W*0.88),
-    y: rand(H*0.14, H*0.96),
+        lanterns.push({
+          x: pos.x, y: pos.y,
+          // velocities (slow, mobile-friendly)
+          vx: rand(-0.012, 0.012) * ui,
+          vy: rand(-0.020, -0.040) * ui,
 
-    r,
-    // vẫn cho di chuyển nhẹ (chỉ vị trí thay đổi, kích thước giữ nguyên)
-    vx: rand(-0.018, 0.018),
-    vy: rand(-0.028, -0.055),
+          sway: rand(0, Math.PI*2),
+          swaySpd: rand(0.0042, 0.0056),
 
-    sway: rand(0, Math.PI*2),
-    swaySpd: rand(0.0045, 0.0060),
+          r,
+          envW, envH, stringLen,
+          clusterR,
 
-    // cố định để nhìn y hệt nhau
-    alpha: 0.92,
-    glow: 0.75,
+          alpha: 0.92,
+          glow: 0.72,
+          seal: true,
 
-    stringLen,
-    envW,
-    envH,
-
-    value: values[i],
-    seal: true,   // hoặc false nếu muốn đồng bộ hoàn toàn (đừng random)
-    hit: null
-  });
-}
+          value: values[i],
+          hit: null,
+        });
+      }
     }
 
     // =========================
     // Background (cheap)
     // =========================
     function drawBackground(){
-      // vignette (cheap fillRect)
       ctx.save();
-      const g = ctx.createRadialGradient(W*0.5, H*0.35, 60, W*0.5, H*0.45, Math.max(W,H)*0.9);
-      g.addColorStop(0, "rgba(255,255,255,0.015)");
+      const g = ctx.createRadialGradient(W*0.5, H*0.35, 70, W*0.5, H*0.45, Math.max(W,H)*0.95);
+      g.addColorStop(0, "rgba(255,255,255,0.014)");
       g.addColorStop(0.6, "rgba(0,0,0,0.10)");
       g.addColorStop(1, "rgba(0,0,0,0.62)");
       ctx.fillStyle = g;
       ctx.fillRect(0,0,W,H);
       ctx.restore();
 
-      // ground haze
       ctx.save();
       const gh = ctx.createLinearGradient(0, H*0.70, 0, H);
       gh.addColorStop(0, "rgba(0,0,0,0)");
@@ -333,7 +364,7 @@
     }
 
     // =========================
-    // Draw lantern + envelope
+    // Lantern + envelope drawing
     // =========================
     function drawEnvelope(x, y, w, h, seal){
       ctx.save();
@@ -350,7 +381,7 @@
       ctx.stroke();
 
       ctx.strokeStyle = "rgba(255,214,107,0.35)";
-      ctx.lineWidth = 1.2;
+      ctx.lineWidth = 1.15;
       ctx.beginPath();
       ctx.moveTo(x - w/2, y - h/2);
       ctx.lineTo(x, y);
@@ -382,14 +413,14 @@
       ctx.save();
       ctx.globalAlpha = o.alpha;
 
-      const swayX = Math.sin(o.sway) * (o.r * 0.35);
+      const swayX = Math.sin(o.sway) * (o.r * 0.34);
       const x = o.x + swayX;
       const y = o.y;
 
       // glow
-      const glowR = o.r * 2.3 * o.glow;
+      const glowR = o.r * 2.25 * o.glow;
       const gg = ctx.createRadialGradient(x, y, 1, x, y, glowR);
-      gg.addColorStop(0, "rgba(255,214,107,0.28)");
+      gg.addColorStop(0, "rgba(255,214,107,0.26)");
       gg.addColorStop(1, "rgba(255,214,107,0)");
       ctx.fillStyle = gg;
       ctx.beginPath(); ctx.arc(x,y,glowR,0,Math.PI*2); ctx.fill();
@@ -418,7 +449,7 @@
 
       // ribs
       ctx.strokeStyle = "rgba(255,214,107,0.32)";
-      ctx.lineWidth = 1.15;
+      ctx.lineWidth = 1.1;
       for (let i=-2;i<=2;i++){
         const t = i/3;
         ctx.beginPath();
@@ -440,7 +471,7 @@
       // hanging string + envelope
       const envY = botY + o.stringLen;
       ctx.strokeStyle = "rgba(255,214,107,0.44)";
-      ctx.lineWidth = 1.15;
+      ctx.lineWidth = 1.1;
       ctx.beginPath();
       ctx.moveTo(x, botY + 6);
       ctx.lineTo(x, envY - o.envH*0.55);
@@ -448,23 +479,22 @@
 
       drawEnvelope(x, envY, o.envW, o.envH, o.seal);
 
-      // hitbox (axis-aligned)
+      // click hitbox (axis-aligned)
       o.hit = { x: x - o.envW/2, y: envY - o.envH/2, w: o.envW, h: o.envH };
 
       ctx.restore();
     }
 
     // =========================
-    // Static tree layer rendering (ONLY when needed)
+    // Static tree layer rendering (draw once)
     // =========================
     function renderTreeLayer(){
       treeCtx.clearRect(0,0,W,H);
 
-      // Draw the tree on treeCtx
       const cx = W*0.5;
       const baseY = H*0.80;
 
-      // spotlight behind
+      // spotlight
       treeCtx.save();
       const halo = treeCtx.createRadialGradient(cx, baseY - H*0.23, 10, cx, baseY - H*0.23, Math.min(W,H)*0.48);
       halo.addColorStop(0, "rgba(255,214,107,0.12)");
@@ -498,7 +528,7 @@
       treeCtx.fill();
       treeCtx.restore();
 
-      // Blossoms (layered canopy - but STATIC now)
+      // blossoms (static)
       const canopyCenterY = baseY - trunkH*0.92;
 
       function blossomColor(depth){
@@ -568,7 +598,7 @@
             const t = (i + rand(0.15,0.85)) / blossomCount;
             const bx = x + (x2-x)*t + rand(-10,10);
             const by = y + (y2-y)*t + rand(-10,10);
-            const rr = rand(4.8, 9.0) * (0.75 + depth*0.55);
+            const rr = rand(4.6, 8.6) * (0.75 + depth*0.55);
             drawBlossom(bx, by, rr, depth);
           }
 
@@ -593,11 +623,11 @@
           branch(topX + s.dx*(0.7+depth), topY + s.dy*(0.7+depth), baseLen*rand(0.72,1.0), s.a + rand(-0.08,0.08), 4);
         }
 
-        const puffCount = 26; // reduced slightly for perf
+        const puffCount = 22;
         for (let i=0;i<puffCount;i++){
           const px = cx + rand(-W*0.18, W*0.18) + (depth-0.5)*22;
           const py = canopyCenterY + rand(-H*0.12, H*0.10) - (1-depth)*12;
-          const pr = rand(20, 42) * (0.7 + depth*0.45);
+          const pr = rand(18, 40) * (0.7 + depth*0.45);
           const c = blossomColor(depth);
           const puff = treeCtx.createRadialGradient(px,py,1,px,py,pr);
           puff.addColorStop(0, `rgba(255,255,255,${0.02 + depth*0.03})`);
@@ -649,10 +679,73 @@
     }
 
     // =========================
-    // Hit test for envelopes
+    // Collision avoidance (gentle separation)
+    // =========================
+    function applyRepulsion(dt){
+      // Keep it cheap: few iterations
+      const iters = 2;
+      const n = lanterns.length;
+
+      // bounds (keep away from edges a bit)
+      const margin = Math.max(24, Math.round(22 * getUIScale()));
+      const minX = margin, maxX = W - margin;
+      const minY = margin + 24, maxY = H - margin; // leave top HUD space a bit
+
+      for (let k=0; k<iters; k++){
+        for (let i=0; i<n; i++){
+          const a = lanterns[i];
+
+          // boundary soft push
+          if (a.x < minX){ a.x = minX; a.vx = Math.abs(a.vx) * 0.7; }
+          if (a.x > maxX){ a.x = maxX; a.vx = -Math.abs(a.vx) * 0.7; }
+          if (a.y < minY){ a.y = minY; a.vy = Math.abs(a.vy) * 0.7; }
+          if (a.y > maxY){ a.y = maxY; a.vy = -Math.abs(a.vy) * 0.7; }
+
+          for (let j=i+1; j<n; j++){
+            const b = lanterns[j];
+            const dx = b.x - a.x;
+            const dy = b.y - a.y;
+            const dist = hypot(dx,dy) || 0.0001;
+
+            const minDist = a.clusterR + b.clusterR + 10; // + padding so they don't "kiss"
+            if (dist < minDist){
+              const overlap = (minDist - dist);
+
+              // normalize
+              const nx = dx / dist;
+              const ny = dy / dist;
+
+              // separate positions (small)
+              const push = overlap * 0.42; // tune: smaller = softer
+              a.x -= nx * push;
+              a.y -= ny * push;
+              b.x += nx * push;
+              b.y += ny * push;
+
+              // nudge velocities to drift apart
+              const vpush = overlap * 0.0008; // dt-independent small
+              a.vx -= nx * vpush;
+              a.vy -= ny * vpush;
+              b.vx += nx * vpush;
+              b.vy += ny * vpush;
+            }
+          }
+        }
+      }
+
+      // mild damping to prevent jitter
+      const damp = Math.pow(0.995, dt); // dt in ms
+      for (const o of lanterns){
+        o.vx *= damp;
+        o.vy *= damp;
+      }
+    }
+
+    // =========================
+    // Hit test
     // =========================
     function hitEnvelope(mx, my){
-      // check closer ones first (roughly by y)
+      // check closer ones first (by y)
       const sorted = [...lanterns].sort((a,b)=> (b.hit?.y ?? 0) - (a.hit?.y ?? 0));
       for (const o of sorted){
         if (!o.hit) continue;
@@ -677,49 +770,80 @@
     document.getElementById('switchBtn').addEventListener('click', ()=>{
       treeMode = (treeMode === 'dao') ? 'mai' : 'dao';
       setModeBadge();
-      renderTreeLayer(); // redraw static tree layer once
+      renderTreeLayer(); // redraw static tree once
     });
+
+    // =========================
+    // Resize
+    // =========================
+    function resize(){
+      DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+      W = Math.floor(innerWidth);
+      H = Math.floor(innerHeight);
+
+      canvas.width = Math.floor(W * DPR);
+      canvas.height = Math.floor(H * DPR);
+      canvas.style.width = W + "px";
+      canvas.style.height = H + "px";
+      ctx.setTransform(DPR,0,0,DPR,0,0);
+
+      treeCanvas.width = Math.floor(W * DPR);
+      treeCanvas.height = Math.floor(H * DPR);
+      treeCtx.setTransform(DPR,0,0,DPR,0,0);
+
+      renderTreeLayer();
+      populate();
+    }
+    addEventListener('resize', resize);
 
     // =========================
     // Animation loop (lanterns only)
     // =========================
     let last = performance.now();
     function frame(now){
-      const dt = Math.min(32, now - last);
+      const dt = Math.min(32, now - last); // ms
       last = now;
 
       ctx.clearRect(0,0,W,H);
-
       drawBackground();
-      // draw static tree image (cheap)
+
+      // draw static tree (cheap)
       ctx.drawImage(treeCanvas, 0, 0, W, H);
 
-      // update & draw lanterns
+      // integrate motion
       for (const o of lanterns){
         o.sway += o.swaySpd * dt;
+
+        // tiny noise-like drift: keep movement alive but gentle
+        // (optional) slight pull to center prevents drifting out over time
+        const pull = 0.00001 * dt;
+        o.vx += (W*0.5 - o.x) * pull * 0.02;
+        o.vy += (H*0.55 - o.y) * pull * 0.02;
+
         o.x += o.vx * dt;
         o.y += o.vy * dt;
 
-        // wrap
-        if (o.x < -80) o.x = W + 80;
-        if (o.x > W + 80) o.x = -80;
-        if (o.y < -220){
-          o.y = H + rand(120, 260);
-          o.x = rand(W*0.12, W*0.88);
-        }
+        // wrap is removed to avoid sudden jumps; we use bounds+repulsion instead
+      }
+
+      // repel to avoid overlap during motion
+      applyRepulsion(dt);
+
+      // draw lanterns
+      for (const o of lanterns){
         drawLanternWithEnvelope(o);
       }
 
-      // title (cheap)
+      // title
       ctx.save();
       ctx.globalAlpha = 0.92;
       ctx.fillStyle = "rgba(255,243,214,0.92)";
-      ctx.font = `900 ${Math.max(18, Math.floor(Math.min(W,H)*0.032))}px system-ui`;
+      ctx.font = `900 ${Math.max(16, Math.floor(Math.min(W,H)*0.032))}px system-ui`;
       ctx.textAlign = "center";
       ctx.textBaseline = "top";
       ctx.shadowColor = "rgba(0,0,0,0.35)";
       ctx.shadowBlur = 10;
-      ctx.fillText("Chúc Mừng Năm Mới", W*0.5, 18);
+      ctx.fillText("Chúc Mừng Năm Mới", W*0.5, 14);
       ctx.restore();
 
       requestAnimationFrame(frame);
@@ -729,7 +853,6 @@
     // Init
     // =========================
     resize();
-    populate();
     requestAnimationFrame(frame);
   </script>
 </body>
