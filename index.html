@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Tết — Cây đứng yên, Đèn lồng treo Lì xì (Responsive + chống dính)</title>
+  <title>CHÚC MỪNG NĂM MỚI 2026</title>
   <style>
     :root{
       --bg1:#070813;
@@ -740,7 +740,6 @@ if (a.y > maxY){ a.y = maxY; a.vy = -Math.abs(a.vy) * 0.7; }
       const damp = Math.pow(0.995, dt); // dt in ms
       for (const o of lanterns){
         o.vx *= damp;
-        o.vy *= damp;
       }
     }
 
@@ -816,6 +815,8 @@ if (a.y > maxY){ a.y = maxY; a.vy = -Math.abs(a.vy) * 0.7; }
       // integrate motion
       for (const o of lanterns){
         o.sway += o.swaySpd * dt;
+        const ui = getUIScale();
+        o.vy = -0.032 * ui; // tốc độ bay lên cố định (tăng/giảm số này tùy thích)
         o.x += o.vx * dt;
         o.y += o.vy * dt;
         // respawn khi ra khỏi màn hình phía trên
