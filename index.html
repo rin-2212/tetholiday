@@ -1,0 +1,819 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tết Việt Nam — Đào/Mai & Đèn lồng, Lì xì bay</title>
+  <style>
+    :root{
+      --bg1:#0b1020;
+      --bg2:#120a18;
+      --gold:#ffd66b;
+      --red:#d9232e;
+      --red2:#b3141d;
+      --pink:#ff77a8;
+      --cream:#fff3d6;
+      --ink:#101217;
+    }
+    html,body{height:100%; margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;}
+    body{
+      background: radial-gradient(1200px 700px at 50% 20%, #1b1a3a 0%, var(--bg1) 40%, #070813 100%);
+      color:#fff;
+      overflow:hidden;
+    }
+    .hud{
+      position:fixed;
+      top:16px; left:16px;
+      display:flex; gap:10px; align-items:center;
+      padding:10px 12px;
+      background: rgba(12, 14, 26, .55);
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 12px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 10px 30px rgba(0,0,0,.35);
+      z-index: 10;
+    }
+    .hud .badge{
+      padding:6px 10px;
+      border-radius: 999px;
+      background: rgba(255,214,107,.14);
+      border:1px solid rgba(255,214,107,.25);
+      color: var(--gold);
+      font-weight: 600;
+      letter-spacing:.2px;
+      font-size: 13px;
+      user-select:none;
+    }
+    .hud button{
+      cursor:pointer;
+      border:1px solid rgba(255,255,255,.16);
+      background: rgba(255,255,255,.08);
+      color:#fff;
+      padding:8px 12px;
+      border-radius: 10px;
+      font-weight: 600;
+      transition: transform .08s ease, background .2s ease;
+    }
+    .hud button:hover{ background: rgba(255,255,255,.12); }
+    .hud button:active{ transform: translateY(1px); }
+    .hud .toggle{
+      display:flex; gap:8px; align-items:center;
+      padding:6px 10px;
+      border-radius: 10px;
+      border:1px solid rgba(255,255,255,.16);
+      background: rgba(255,255,255,.06);
+      user-select:none;
+      font-size: 13px;
+    }
+    .hud input[type="checkbox"]{ transform: translateY(1px); }
+    canvas{ display:block; width:100vw; height:100vh; }
+    .footer-note{
+      position:fixed;
+      bottom:14px; left:50%;
+      transform: translateX(-50%);
+      opacity:.8;
+      font-size:12px;
+      background: rgba(0,0,0,.22);
+      border:1px solid rgba(255,255,255,.10);
+      padding:6px 10px;
+      border-radius: 999px;
+      backdrop-filter: blur(6px);
+      user-select:none;
+      z-index: 10;
+    }
+  </style>
+</head>
+<body>
+  <div class="hud">
+    <div class="badge" id="modeBadge">Cây: Đào 🌸</div>
+    <button id="regenBtn">Regenerate</button>
+    <button id="switchBtn">Đổi Đào/Mai</button>
+    <label class="toggle" title="Giảm chuyển động (ít đồ bay hơn)">
+      <input id="reducedMotion" type="checkbox" />
+      Reduced motion
+    </label>
+  </div>
+
+  <canvas id="c"></canvas>
+  <div class="footer-note">Click chuột để “thả” thêm đèn lồng / lì xì ✨</div>
+
+  <script>
+    // =========================
+    // Utilities
+    // =========================
+    const rand = (min, max) => Math.random() * (max - min) + min;
+    const randi = (min, max) => Math.floor(rand(min, max + 1));
+    const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+    const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+    // Weighted pick by [item, weight]
+    function weightedPick(items){
+      const total = items.reduce((s, it) => s + it[1], 0);
+      let t = Math.random() * total;
+      for (const [v,w] of items){
+        t -= w;
+        if (t <= 0) return v;
+      }
+      return items[items.length - 1][0];
+    }
+
+    // =========================
+    // Canvas setup
+    // =========================
+    const canvas = document.getElementById('c');
+    const ctx = canvas.getContext('2d');
+
+    let W = 0, H = 0, DPR = 1;
+
+    function resize(){
+      DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+      W = Math.floor(window.innerWidth);
+      H = Math.floor(window.innerHeight);
+      canvas.width = Math.floor(W * DPR);
+      canvas.height = Math.floor(H * DPR);
+      canvas.style.width = W + "px";
+      canvas.style.height = H + "px";
+      ctx.setTransform(DPR,0,0,DPR,0,0);
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // =========================
+    // Scene config
+    // =========================
+    let treeMode = 'dao'; // 'dao' or 'mai'
+    const modeBadge = document.getElementById('modeBadge');
+    const reducedMotionEl = document.getElementById('reducedMotion');
+
+    function setModeBadge(){
+      modeBadge.textContent = treeMode === 'dao' ? 'Cây: Đào 🌸' : 'Cây: Mai 🌼';
+    }
+    setModeBadge();
+
+    // =========================
+    // Floating objects
+    // =========================
+    const objects = [];
+    const MAX_OBJECTS_DEFAULT = 70;
+    const MAX_OBJECTS_REDUCED = 35;
+
+    // Envelope text rules:
+    // - Always includes "Chúc mừng năm mới", 50k, 100k, 200k
+    // - "500k" only 1-3 per regenerate batch
+    function buildEnvelopeTextPool(){
+      const pool = [];
+      // make plenty of normal texts
+      const base = [
+        ["Chúc mừng năm mới", 6],
+        ["50k", 7],
+        ["100k", 6],
+        ["200k", 4],
+      ];
+      // limited 500k
+      const count500 = randi(1,3);
+      for (let i=0;i<count500;i++) pool.push("500k");
+
+      // fill the rest with weighted choices
+      const targetTotal = 18; // number of envelopes we aim to spawn initially
+      while (pool.length < targetTotal){
+        pool.push(weightedPick(base));
+      }
+      // shuffle
+      for (let i = pool.length - 1; i > 0; i--){
+        const j = Math.floor(Math.random() * (i + 1));
+        [pool[i], pool[j]] = [pool[j], pool[i]];
+      }
+      return pool;
+    }
+
+    let envelopePool = buildEnvelopeTextPool();
+
+    function spawnLantern(x = rand(W*0.1, W*0.9), y = H + rand(10, 120)){
+      objects.push({
+        type: 'lantern',
+        x, y,
+        vx: rand(-0.15, 0.15),
+        vy: rand(-0.9, -1.7),
+        sway: rand(0, Math.PI*2),
+        swaySpd: rand(0.012, 0.02),
+        r: rand(16, 26),
+        alpha: rand(0.82, 0.98),
+        glow: rand(0.5, 0.9),
+        tw: rand(0.9, 1.15)
+      });
+    }
+
+    function spawnEnvelope(x = rand(W*0.1, W*0.9), y = H + rand(10, 120)){
+      const text = envelopePool.length ? envelopePool.pop() : weightedPick([
+        ["Chúc mừng năm mới", 5],
+        ["50k", 7],
+        ["100k", 6],
+        ["200k", 4]
+      ]);
+      const w = rand(42, 62);
+      const h = w * rand(0.7, 0.82);
+      objects.push({
+        type: 'envelope',
+        x, y,
+        vx: rand(-0.18, 0.18),
+        vy: rand(-1.0, -2.0),
+        sway: rand(0, Math.PI*2),
+        swaySpd: rand(0.012, 0.022),
+        rot: rand(-0.25, 0.25),
+        rotSpd: rand(-0.004, 0.004),
+        w, h,
+        alpha: rand(0.84, 0.98),
+        text,
+        seal: Math.random() < 0.55
+      });
+    }
+
+    function capObjects(){
+      const max = reducedMotionEl.checked ? MAX_OBJECTS_REDUCED : MAX_OBJECTS_DEFAULT;
+      if (objects.length > max) objects.splice(0, objects.length - max);
+    }
+
+    // Initial population
+    function populate(){
+      objects.length = 0;
+      envelopePool = buildEnvelopeTextPool();
+      const reduced = reducedMotionEl.checked;
+
+      const lanternCount = reduced ? 14 : 26;
+      const envelopeCount = reduced ? 8 : 18;
+
+      for (let i=0;i<lanternCount;i++) spawnLantern();
+      for (let i=0;i<envelopeCount;i++) spawnEnvelope();
+
+      // sprinkle extra sparkles as "tiny lanterns" (simple particles)
+      for (let i=0;i<(reduced? 60 : 110);i++){
+        objects.push({
+          type:'spark',
+          x: rand(0,W),
+          y: rand(0,H),
+          vy: rand(-0.12, -0.4),
+          a: rand(0.08, 0.22),
+          r: rand(0.6, 1.4),
+          phase: rand(0, Math.PI*2),
+          spd: rand(0.008, 0.02)
+        });
+      }
+
+      capObjects();
+    }
+    populate();
+
+    // Click to add
+    window.addEventListener('pointerdown', (e)=>{
+      const x = e.clientX, y = e.clientY;
+      const n = reducedMotionEl.checked ? 2 : 4;
+      for (let i=0;i<n;i++){
+        Math.random() < 0.55 ? spawnLantern(x + rand(-40,40), y + rand(-20,20))
+                             : spawnEnvelope(x + rand(-40,40), y + rand(-20,20));
+      }
+      capObjects();
+    });
+
+    // Controls
+    document.getElementById('regenBtn').addEventListener('click', ()=>{
+      populate();
+    });
+
+    document.getElementById('switchBtn').addEventListener('click', ()=>{
+      treeMode = (treeMode === 'dao') ? 'mai' : 'dao';
+      setModeBadge();
+    });
+
+    reducedMotionEl.addEventListener('change', ()=>{
+      populate();
+    });
+
+    // =========================
+    // Drawing helpers
+    // =========================
+    function drawBackground(){
+      // night gradient sky already in CSS; add subtle vignette + bokeh
+      ctx.save();
+      // vignette
+      const g = ctx.createRadialGradient(W*0.5, H*0.35, 40, W*0.5, H*0.4, Math.max(W,H)*0.75);
+      g.addColorStop(0, "rgba(255,255,255,0.02)");
+      g.addColorStop(0.5, "rgba(0,0,0,0.12)");
+      g.addColorStop(1, "rgba(0,0,0,0.55)");
+      ctx.fillStyle = g;
+      ctx.fillRect(0,0,W,H);
+
+      // bokeh orbs
+      const orbs = reducedMotionEl.checked ? 7 : 12;
+      for (let i=0;i<orbs;i++){
+        const x = (i*97 + (performance.now()*0.01)) % (W+200) - 100;
+        const y = H*0.15 + Math.sin((i+performance.now()*0.0004))*H*0.06 + (i%3)*H*0.05;
+        const r = 70 + (i%5)*26;
+        const gg = ctx.createRadialGradient(x,y, 1, x,y, r);
+        gg.addColorStop(0, "rgba(255,214,107,0.07)");
+        gg.addColorStop(1, "rgba(255,214,107,0)");
+        ctx.fillStyle = gg;
+        ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
+      }
+      ctx.restore();
+
+      // ground haze
+      ctx.save();
+      const gh = ctx.createLinearGradient(0, H*0.72, 0, H);
+      gh.addColorStop(0, "rgba(0,0,0,0)");
+      gh.addColorStop(1, "rgba(0,0,0,0.5)");
+      ctx.fillStyle = gh;
+      ctx.fillRect(0, H*0.72, W, H*0.28);
+      ctx.restore();
+    }
+
+    function drawLantern(o){
+      ctx.save();
+      ctx.globalAlpha = o.alpha;
+
+      const swayX = Math.sin(o.sway) * (o.r * 0.25);
+      const x = o.x + swayX;
+      const y = o.y;
+
+      // glow
+      const glowR = o.r * 2.2 * o.glow;
+      const gg = ctx.createRadialGradient(x, y, 1, x, y, glowR);
+      gg.addColorStop(0, "rgba(255,214,107,0.30)");
+      gg.addColorStop(1, "rgba(255,214,107,0)");
+      ctx.fillStyle = gg;
+      ctx.beginPath();
+      ctx.arc(x, y, glowR, 0, Math.PI*2);
+      ctx.fill();
+
+      // string
+      ctx.strokeStyle = "rgba(255,255,255,0.18)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x, y - o.r*1.55);
+      ctx.lineTo(x, y - o.r*0.95);
+      ctx.stroke();
+
+      // lantern body
+      const bodyH = o.r * 1.45;
+      const bodyW = o.r * 1.15;
+      const topY = y - bodyH*0.65;
+      const botY = y + bodyH*0.55;
+
+      // red gradient
+      const rg = ctx.createLinearGradient(x - bodyW, topY, x + bodyW, botY);
+      rg.addColorStop(0, "rgba(217,35,46,0.95)");
+      rg.addColorStop(1, "rgba(179,20,29,0.95)");
+      ctx.fillStyle = rg;
+
+      ctx.beginPath();
+      // capsule-ish lantern
+      ctx.ellipse(x, y, bodyW, bodyH*0.58, 0, 0, Math.PI*2);
+      ctx.fill();
+
+      // ribs
+      ctx.strokeStyle = "rgba(255,214,107,0.35)";
+      ctx.lineWidth = 1.2;
+      for (let i=-2;i<=2;i++){
+        const t = i/3;
+        ctx.beginPath();
+        ctx.ellipse(x + t*bodyW*0.35, y, bodyW*(1- Math.abs(t)*0.15), bodyH*0.56, 0, 0, Math.PI*2);
+        ctx.stroke();
+      }
+
+      // top cap
+      ctx.fillStyle = "rgba(255,214,107,0.85)";
+      ctx.beginPath();
+      ctx.roundRect(x - bodyW*0.55, topY - 8, bodyW*1.1, 10, 4);
+      ctx.fill();
+
+      // tassel
+      ctx.strokeStyle = "rgba(255,214,107,0.55)";
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(x, botY);
+      ctx.lineTo(x, botY + o.r*0.8);
+      ctx.stroke();
+
+      // tassel strands
+      ctx.lineWidth = 1;
+      for (let i=-2;i<=2;i++){
+        ctx.beginPath();
+        ctx.moveTo(x, botY + o.r*0.65);
+        ctx.lineTo(x + i*3, botY + o.r*0.95);
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    }
+
+    function drawEnvelope(o){
+      ctx.save();
+      ctx.globalAlpha = o.alpha;
+
+      const swayX = Math.sin(o.sway) * (o.w * 0.14);
+      const x = o.x + swayX;
+      const y = o.y;
+
+      ctx.translate(x, y);
+      ctx.rotate(o.rot);
+
+      // glow
+      const gg = ctx.createRadialGradient(0, 0, 1, 0, 0, Math.max(o.w,o.h)*1.6);
+      gg.addColorStop(0, "rgba(255,214,107,0.16)");
+      gg.addColorStop(1, "rgba(255,214,107,0)");
+      ctx.fillStyle = gg;
+      ctx.beginPath();
+      ctx.arc(0, 0, Math.max(o.w,o.h)*1.6, 0, Math.PI*2);
+      ctx.fill();
+
+      // envelope body
+      const rw = o.w, rh = o.h;
+      const grad = ctx.createLinearGradient(-rw/2, -rh/2, rw/2, rh/2);
+      grad.addColorStop(0, "rgba(217,35,46,0.96)");
+      grad.addColorStop(1, "rgba(179,20,29,0.96)");
+      ctx.fillStyle = grad;
+      ctx.strokeStyle = "rgba(255,255,255,0.14)";
+      ctx.lineWidth = 1;
+
+      ctx.beginPath();
+      ctx.roundRect(-rw/2, -rh/2, rw, rh, 10);
+      ctx.fill();
+      ctx.stroke();
+
+      // flap lines
+      ctx.strokeStyle = "rgba(255,214,107,0.38)";
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(-rw/2, -rh/2);
+      ctx.lineTo(0, 0);
+      ctx.lineTo(rw/2, -rh/2);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(-rw/2, rh/2);
+      ctx.lineTo(0, 0);
+      ctx.lineTo(rw/2, rh/2);
+      ctx.stroke();
+
+      // seal
+      if (o.seal){
+        ctx.fillStyle = "rgba(255,214,107,0.9)";
+        ctx.beginPath();
+        ctx.arc(0, rh*0.12, Math.min(rw,rh)*0.12, 0, Math.PI*2);
+        ctx.fill();
+
+        ctx.fillStyle = "rgba(16,18,23,0.35)";
+        ctx.font = `700 ${Math.max(10, Math.floor(rh*0.22))}px system-ui`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("福", 0, rh*0.12+1); // decorative
+      }
+
+      // text
+      ctx.fillStyle = "rgba(255,243,214,0.95)";
+      const isLong = o.text.length > 7;
+      ctx.font = `700 ${isLong ? Math.max(11, Math.floor(rh*0.22)) : Math.max(12, Math.floor(rh*0.28))}px system-ui`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+
+      // subtle text shadow
+      ctx.shadowColor = "rgba(0,0,0,0.35)";
+      ctx.shadowBlur = 6;
+      ctx.shadowOffsetY = 2;
+      ctx.fillText(o.text, 0, -rh*0.18);
+
+      // small ornament line
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = "rgba(255,214,107,0.35)";
+      ctx.beginPath();
+      ctx.moveTo(-rw*0.28, rh*0.22);
+      ctx.lineTo(rw*0.28, rh*0.22);
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
+    function drawSpark(o){
+      ctx.save();
+      const tw = (Math.sin(o.phase) * 0.5 + 0.5);
+      ctx.globalAlpha = o.a * (0.5 + tw*0.8);
+      ctx.fillStyle = "rgba(255,214,107,1)";
+      ctx.beginPath();
+      ctx.arc(o.x, o.y, o.r * (0.7 + tw*0.8), 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // =========================
+    // Stylized tree
+    // =========================
+    function drawTree(){
+      const cx = W*0.5;
+      const baseY = H*0.78;
+
+      // soft spotlight behind tree
+      ctx.save();
+      const halo = ctx.createRadialGradient(cx, baseY - H*0.22, 10, cx, baseY - H*0.22, Math.min(W,H)*0.42);
+      halo.addColorStop(0, "rgba(255,214,107,0.12)");
+      halo.addColorStop(0.45, "rgba(255,214,107,0.03)");
+      halo.addColorStop(1, "rgba(255,214,107,0)");
+      ctx.fillStyle = halo;
+      ctx.beginPath();
+      ctx.arc(cx, baseY - H*0.22, Math.min(W,H)*0.42, 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+
+      // trunk
+      ctx.save();
+      const trunkW = Math.min(70, W*0.07);
+      const trunkH = Math.min(240, H*0.30);
+
+      const bark = ctx.createLinearGradient(cx - trunkW, baseY, cx + trunkW, baseY - trunkH);
+      bark.addColorStop(0, "rgba(88,50,28,0.95)");
+      bark.addColorStop(1, "rgba(53,26,14,0.95)");
+      ctx.fillStyle = bark;
+
+      ctx.beginPath();
+      ctx.moveTo(cx - trunkW*0.55, baseY);
+      ctx.bezierCurveTo(cx - trunkW*0.85, baseY - trunkH*0.35, cx - trunkW*0.35, baseY - trunkH*0.78, cx - trunkW*0.20, baseY - trunkH);
+      ctx.lineTo(cx + trunkW*0.22, baseY - trunkH);
+      ctx.bezierCurveTo(cx + trunkW*0.38, baseY - trunkH*0.80, cx + trunkW*0.92, baseY - trunkH*0.35, cx + trunkW*0.62, baseY);
+      ctx.closePath();
+      ctx.fill();
+
+      // root base shadow
+      ctx.fillStyle = "rgba(0,0,0,0.25)";
+      ctx.beginPath();
+      ctx.ellipse(cx, baseY+10, trunkW*1.6, 18, 0, 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+
+      // branches (procedural)
+      ctx.save();
+      ctx.strokeStyle = "rgba(66,33,17,0.95)";
+      ctx.lineWidth = 5;
+      ctx.lineCap = "round";
+
+      function branch(x,y, len, ang, depth){
+        const x2 = x + Math.cos(ang)*len;
+        const y2 = y + Math.sin(ang)*len;
+        ctx.lineWidth = clamp(6 - depth*1.1, 1.5, 6);
+        ctx.beginPath();
+        ctx.moveTo(x,y);
+        ctx.lineTo(x2,y2);
+        ctx.stroke();
+
+        // blossoms along branch
+        const blossomCount = Math.max(2, Math.floor(len/22));
+        for (let i=0;i<blossomCount;i++){
+          const t = (i+0.3)/blossomCount;
+          const bx = x + (x2-x)*t + rand(-6,6);
+          const by = y + (y2-y)*t + rand(-6,6);
+          drawBlossom(bx, by, rand(4.5, 8.2), depth);
+        }
+
+        if (depth <= 0) return;
+        const n = randi(2,3);
+        for (let i=0;i<n;i++){
+          branch(
+            x2, y2,
+            len * rand(0.58, 0.76),
+            ang + rand(-0.7, 0.7),
+            depth - 1
+          );
+        }
+      }
+
+      function drawBlossom(x,y, r, depth){
+        ctx.save();
+        // color depends on mode
+        const c1 = treeMode === 'dao' ? "rgba(255,119,168,0.95)" : "rgba(255,214,107,0.95)";
+        const c2 = treeMode === 'dao' ? "rgba(255,183,214,0.90)" : "rgba(255,242,190,0.92)";
+        const core = "rgba(255,243,214,0.95)";
+
+        // glow
+        const gg = ctx.createRadialGradient(x,y,1,x,y, r*3);
+        gg.addColorStop(0, treeMode === 'dao' ? "rgba(255,119,168,0.18)" : "rgba(255,214,107,0.16)");
+        gg.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = gg;
+        ctx.beginPath(); ctx.arc(x,y,r*3,0,Math.PI*2); ctx.fill();
+
+        // petals
+        for (let i=0;i<5;i++){
+          const a = (Math.PI*2)*i/5 + rand(-0.08,0.08);
+          const px = x + Math.cos(a)*r*0.6;
+          const py = y + Math.sin(a)*r*0.6;
+          const pg = ctx.createRadialGradient(px,py,1,px,py,r*1.2);
+          pg.addColorStop(0, c2);
+          pg.addColorStop(1, c1);
+          ctx.fillStyle = pg;
+
+          ctx.beginPath();
+          ctx.ellipse(px, py, r*0.95, r*0.55, a, 0, Math.PI*2);
+          ctx.fill();
+        }
+
+        // core
+        ctx.fillStyle = core;
+        ctx.beginPath(); ctx.arc(x,y,r*0.35,0,Math.PI*2); ctx.fill();
+
+        // tiny stamens
+        ctx.strokeStyle = "rgba(255,214,107,0.55)";
+        ctx.lineWidth = 1;
+        const s = treeMode === 'dao' ? 5 : 6;
+        for (let i=0;i<s;i++){
+          const a = (Math.PI*2)*i/s;
+          ctx.beginPath();
+          ctx.moveTo(x,y);
+          ctx.lineTo(x + Math.cos(a)*r*0.65, y + Math.sin(a)*r*0.65);
+          ctx.stroke();
+        }
+
+        ctx.restore();
+      }
+
+      // start from trunk top
+      const startX = cx;
+      const startY = baseY - Math.min(240, H*0.30);
+      branch(startX, startY, Math.min(150, W*0.18), -Math.PI/2 - 0.15, 3);
+      branch(startX, startY+10, Math.min(140, W*0.16), -Math.PI/2 + 0.25, 3);
+      branch(startX, startY+20, Math.min(120, W*0.14), -Math.PI/2 + 0.65, 2);
+      branch(startX, startY+15, Math.min(120, W*0.14), -Math.PI/2 - 0.75, 2);
+
+      ctx.restore();
+
+      // base pot (chậu)
+      ctx.save();
+      const potW = Math.min(260, W*0.34);
+      const potH = Math.min(90, H*0.11);
+      const potY = baseY + 35;
+
+      // pot shadow
+      ctx.fillStyle = "rgba(0,0,0,0.35)";
+      ctx.beginPath();
+      ctx.ellipse(cx, potY + potH*0.55, potW*0.45, 18, 0, 0, Math.PI*2);
+      ctx.fill();
+
+      const potGrad = ctx.createLinearGradient(cx - potW/2, potY - potH/2, cx + potW/2, potY + potH/2);
+      potGrad.addColorStop(0, "rgba(217,35,46,0.95)");
+      potGrad.addColorStop(1, "rgba(179,20,29,0.95)");
+      ctx.fillStyle = potGrad;
+
+      // pot body
+      ctx.beginPath();
+      ctx.roundRect(cx - potW/2, potY - potH/2, potW, potH, 18);
+      ctx.fill();
+
+      // pot rim
+      ctx.fillStyle = "rgba(255,214,107,0.85)";
+      ctx.beginPath();
+      ctx.roundRect(cx - potW*0.55, potY - potH*0.62, potW*1.1, potH*0.22, 16);
+      ctx.fill();
+
+      // ornament
+      ctx.fillStyle = "rgba(255,243,214,0.90)";
+      ctx.font = `800 ${Math.max(18, Math.floor(potH*0.35))}px system-ui`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(treeMode === 'dao' ? "TẾT" : "XUÂN", cx, potY + potH*0.06);
+
+      ctx.restore();
+    }
+
+    // polyfill for roundRect on older browsers
+    if (!CanvasRenderingContext2D.prototype.roundRect) {
+      CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+        r = typeof r === 'number' ? {tl:r,tr:r,br:r,bl:r} : r;
+        this.beginPath();
+        this.moveTo(x + r.tl, y);
+        this.lineTo(x + w - r.tr, y);
+        this.quadraticCurveTo(x + w, y, x + w, y + r.tr);
+        this.lineTo(x + w, y + h - r.br);
+        this.quadraticCurveTo(x + w, y + h, x + w - r.br, y + h);
+        this.lineTo(x + r.bl, y + h);
+        this.quadraticCurveTo(x, y + h, x, y + h - r.bl);
+        this.lineTo(x, y + r.tl);
+        this.quadraticCurveTo(x, y, x + r.tl, y);
+        this.closePath();
+        return this;
+      }
+    }
+
+    // =========================
+    // Animation loop
+    // =========================
+    let last = performance.now();
+
+    function step(now){
+      const dt = Math.min(32, now - last);
+      last = now;
+
+      ctx.clearRect(0,0,W,H);
+
+      drawBackground();
+      drawTree();
+
+      // update & draw floating objects (draw far -> near)
+      // separate by type for nicer layering: sparks behind, then lanterns/envelopes
+      for (const o of objects){
+        if (o.type === 'spark'){
+          o.phase += o.spd * dt;
+          o.y += o.vy * dt;
+          if (o.y < -20) o.y = H + rand(0, 40);
+          drawSpark(o);
+        }
+      }
+
+      for (const o of objects){
+        if (o.type === 'lantern' || o.type === 'envelope'){
+          o.sway += o.swaySpd * dt;
+          o.x += o.vx * dt;
+          o.y += o.vy * dt;
+
+          if (o.type === 'envelope'){
+            o.rot += o.rotSpd * dt;
+          }
+
+          // wrap horizontally
+          if (o.x < -80) o.x = W + 80;
+          if (o.x > W + 80) o.x = -80;
+
+          // respawn when off top
+          if (o.y < -160){
+            // respawn at bottom with chance to switch type
+            if (reducedMotionEl.checked){
+              // less spawning variety
+              if (o.type === 'lantern') Object.assign(o, spawnLanternReturn());
+              else Object.assign(o, spawnEnvelopeReturn());
+            } else {
+              if (Math.random() < 0.55) Object.assign(o, spawnLanternReturn());
+              else Object.assign(o, spawnEnvelopeReturn());
+            }
+          }
+
+          if (o.type === 'lantern') drawLantern(o);
+          else drawEnvelope(o);
+        }
+      }
+
+      // subtle top title
+      ctx.save();
+      ctx.globalAlpha = 0.92;
+      ctx.fillStyle = "rgba(255,243,214,0.92)";
+      ctx.font = `900 ${Math.max(18, Math.floor(Math.min(W,H)*0.03))}px system-ui`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      ctx.shadowColor = "rgba(0,0,0,0.35)";
+      ctx.shadowBlur = 12;
+      ctx.fillText("Chúc Mừng Năm Mới", W*0.5, 18);
+      ctx.restore();
+
+      requestAnimationFrame(step);
+    }
+
+    // helper respawn templates (return new property bag)
+    function spawnLanternReturn(){
+      return {
+        type:'lantern',
+        x: rand(W*0.1, W*0.9),
+        y: H + rand(30, 160),
+        vx: rand(-0.15, 0.15),
+        vy: rand(-0.9, -1.7),
+        sway: rand(0, Math.PI*2),
+        swaySpd: rand(0.012, 0.02),
+        r: rand(16, 26),
+        alpha: rand(0.82, 0.98),
+        glow: rand(0.5, 0.9),
+        tw: rand(0.9, 1.15)
+      }
+    }
+    function spawnEnvelopeReturn(){
+      // ensure 500k stays limited per regenerate: if pool is empty, don't add 500k anymore
+      const text = envelopePool.length ? envelopePool.pop() : weightedPick([
+        ["Chúc mừng năm mới", 5],
+        ["50k", 7],
+        ["100k", 6],
+        ["200k", 4]
+      ]);
+      const w = rand(42, 62);
+      const h = w * rand(0.7, 0.82);
+      return {
+        type:'envelope',
+        x: rand(W*0.1, W*0.9),
+        y: H + rand(30, 160),
+        vx: rand(-0.18, 0.18),
+        vy: rand(-1.0, -2.0),
+        sway: rand(0, Math.PI*2),
+        swaySpd: rand(0.012, 0.022),
+        rot: rand(-0.25, 0.25),
+        rotSpd: rand(-0.004, 0.004),
+        w, h,
+        alpha: rand(0.84, 0.98),
+        text,
+        seal: Math.random() < 0.55
+      }
+    }
+
+    requestAnimationFrame(step);
+  </script>
+</body>
+</html>
