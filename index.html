@@ -276,28 +276,36 @@
       const values = buildEnvelopeValues(LANTERN_COUNT);
 
       for (let i=0;i<LANTERN_COUNT;i++){
-        const r = rand(18, 28);
-        lanterns.push({
-          x: rand(W*0.12, W*0.88),
-          y: rand(H*0.14, H*0.96),
-          r,
-          // gentle drift (slow)
-          vx: rand(-0.020, 0.020),
-          vy: rand(-0.030, -0.065),
-          // gentle sway (slow)
-          sway: rand(0, Math.PI*2),
-          swaySpd: rand(0.0038, 0.0068),
-          alpha: rand(0.82, 0.98),
-          glow: rand(0.55, 0.9),
-          // hanging
-          stringLen: r * rand(1.8, 2.45),
-          envW: r * rand(2.1, 2.7),
-          envH: r * rand(1.55, 1.9),
-          value: values[i],
-          seal: Math.random() < 0.55,
-          hit: null
-        });
-      }
+  const r = 24;            // đèn lồng đồng đều
+  const envW = 64;         // phong bao đồng đều (px)
+  const envH = 46;
+  const stringLen = 54;
+
+  lanterns.push({
+    x: rand(W*0.12, W*0.88),
+    y: rand(H*0.14, H*0.96),
+
+    r,
+    // vẫn cho di chuyển nhẹ (chỉ vị trí thay đổi, kích thước giữ nguyên)
+    vx: rand(-0.018, 0.018),
+    vy: rand(-0.028, -0.055),
+
+    sway: rand(0, Math.PI*2),
+    swaySpd: rand(0.0045, 0.0060),
+
+    // cố định để nhìn y hệt nhau
+    alpha: 0.92,
+    glow: 0.75,
+
+    stringLen,
+    envW,
+    envH,
+
+    value: values[i],
+    seal: true,   // hoặc false nếu muốn đồng bộ hoàn toàn (đừng random)
+    hit: null
+  });
+}
     }
 
     // =========================
