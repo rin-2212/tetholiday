@@ -242,17 +242,18 @@
     addEventListener('keydown', (e)=>{ if (e.key === "Escape") closePopup(); });
 
     // =========================
-    // Envelope pool (500k limited 1-3 per regenerate)
+    // Envelope pool (500k limited 1-2 per regenerate)
     // =========================
     function buildEnvelopeValues(count){
       const pool = [];
       const base = [
         ["Chúc mừng năm mới", 7],
-        ["50k", 8],
+        ["50k", 10],
         ["100k", 7],
         ["200k", 5],
+        ["300k", 3],
       ];
-      const count500 = randi(1,3);
+      const count500 = randi(1,2);
       for (let i=0;i<count500;i++) pool.push("500k");
       while (pool.length < count){
         pool.push(weightedPick(base));
